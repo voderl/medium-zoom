@@ -11,7 +11,7 @@ if you meet some condition worked unnormal, please submit issues.
 
 1. install this package
 
-```sh
+```bash
 yarn add @voderl/medium-zoom
 ```
 

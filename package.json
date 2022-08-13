@@ -1,6 +1,6 @@
 {
   "name": "@voderl/medium-zoom",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A JavaScript library for zooming images like Medium (Enhanced with srcset and source support)",
   "license": "MIT",
   "repository": "voderl/medium-zoom",

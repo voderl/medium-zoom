@@ -1,3 +1,69 @@
+## CHANGE
+
+1. optimize the image with srcset loading, avoid being stucked.
+2. add source support. `<picture><source /><img /></picture>`. it works like srcset
+
+it's recommended to be used in Gatsby. (like what i am doing)
+
+if you meet some condition worked unnormal, please submit issues.
+
+### use with Gatsby
+
+1. install this package
+
+```sh
+yarn add @voderl/medium-zoom
+```
+
+2. install [`gatsby-plugin-images`](https://www.gatsbyjs.com/plugins/gatsby-remark-images/#gatsby-remark-images)
+
+```js
+;[
+  {
+    resolve: `gatsby-remark-images`,
+    options: {
+      linkImagesToOriginal: false, // important
+    },
+  },
+]
+```
+
+3. Copy the following code into `gatsby-browser.js`
+
+```js
+import mediumZoom from '@voderl/medium-zoom'
+
+const options = {
+  margin: 24,
+  background: '#fff',
+  scrollOffset: 40,
+  container: undefined,
+  template: undefined,
+  zIndex: 999,
+  excludedSelector: undefined,
+  respectSrcsetImageSize: true,
+}
+
+export const onClientEntry = () => {
+  const { zIndex } = options
+
+  const styles = `
+    .medium-zoom-overlay, .medium-zoom-image--opened {
+      z-index: ${zIndex};
+    }
+  `
+
+  const node = document.createElement(`style`)
+  node.id = `medium-zoom-styles`
+  node.innerHTML = styles
+  document.head.appendChild(node)
+}
+
+export const onRouteUpdate = () => {
+  mediumZoom('.gatsby-resp-image-image', options)
+}
+```
+
 <p align="center">
   <a href="https://medium-zoom.francoischalifour.com"><img src="logo.svg" alt="Demo" width="64"></a>
   <h3 align="center">medium-zoom</h3>

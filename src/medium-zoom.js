@@ -177,7 +177,7 @@ const mediumZoom = (selector, options = {}) => {
   }
 
   const open = ({ target } = {}) => {
-    const _animate = () => {
+    const getContainerInfo = () => {
       let container = {
         width: document.documentElement.clientWidth,
         height: document.documentElement.clientHeight,
@@ -235,37 +235,56 @@ const mediumZoom = (selector, options = {}) => {
       viewportHeight =
         viewportHeight || container.height - zoomOptions.margin * 2
 
-      const zoomTarget = active.zoomedHd || active.original
-      const naturalWidth = isSvg(zoomTarget)
-        ? viewportWidth
-        : zoomTarget.naturalWidth || viewportWidth
-      const naturalHeight = isSvg(zoomTarget)
-        ? viewportHeight
-        : zoomTarget.naturalHeight || viewportHeight
+      return {
+        left: container.left,
+        top: container.top,
+        viewportWidth,
+        viewportHeight,
+      }
+    }
+
+    const getZoomTargetInfo = zoomTarget => {
       const { top, left, width, height } = zoomTarget.getBoundingClientRect()
+      return {
+        top,
+        left,
+        width,
+        height,
+        naturalWidth: isSvg(zoomTarget) ? 0 : zoomTarget.naturalWidth,
+        naturalHeight: isSvg(zoomTarget) ? 0 : zoomTarget.naturalHeight,
+      }
+    }
+
+    const getTransform = (zoomTargetInfo, containerInfo) => {
+      const { viewportWidth, viewportHeight } = containerInfo
+      const { top, left, width, height } = zoomTargetInfo
+      // const zoomTarget = active.zoomedHd || active.original
+      const naturalWidth = zoomTargetInfo.naturalWidth || viewportWidth
+      const naturalHeight = zoomTargetInfo.naturalHeight || viewportHeight
 
       const scaleX = Math.min(naturalWidth, viewportWidth) / width
       const scaleY = Math.min(naturalHeight, viewportHeight) / height
       const scale = Math.min(scaleX, scaleY)
       const translateX =
-        (-left +
-          (viewportWidth - width) / 2 +
-          zoomOptions.margin +
-          container.left) /
-        scale
+        -left +
+        (viewportWidth - width) / 2 +
+        zoomOptions.margin +
+        containerInfo.left
       const translateY =
-        (-top +
-          (viewportHeight - height) / 2 +
-          zoomOptions.margin +
-          container.top) /
-        scale
-      const transform = `scale(${scale}) translate3d(${translateX}px, ${translateY}px, 0)`
+        -top +
+        (viewportHeight - height) / 2 +
+        zoomOptions.margin +
+        containerInfo.top
+      return `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`
+    }
+
+    const _animate = () => {
+      const transform = getTransform(
+        getZoomTargetInfo(active.original),
+        getContainerInfo()
+      )
 
       active.zoomed.style.transform = transform
-
-      if (active.zoomedHd) {
-        active.zoomedHd.style.transform = transform
-      }
     }
 
     return new Promise(resolve => {
@@ -385,18 +404,105 @@ const mediumZoom = (selector, options = {}) => {
         // value) for the load event to be fired.
         active.zoomedHd.removeAttribute('loading')
 
+        // ensure the picture won't flash when first painted.
+        active.zoomedHd.setAttribute('decoding', 'sync')
+
+        // directly append image to document
+        active.zoomedHd.classList.add('medium-zoom-image--opened')
+        active.zoomedHd.style.visibility = 'hidden'
+        document.body.appendChild(active.zoomedHd)
+
         // Wait for the load event of the hd image. This will fire if the image
         // is already cached.
-        const loadEventListener = active.zoomedHd.addEventListener(
-          'load',
-          () => {
-            active.zoomedHd.removeEventListener('load', loadEventListener)
-            active.zoomedHd.classList.add('medium-zoom-image--opened')
-            active.zoomedHd.addEventListener('click', close)
-            document.body.appendChild(active.zoomedHd)
-            _animate()
-          }
+
+        const containerInfo = getContainerInfo()
+        const zoomTargetInfo = getZoomTargetInfo(active.original)
+
+        // transform zoomed and zoomedHd sync, with zoomedHd's visibility is hidden
+        active.zoomedHd.style.transform = active.zoomed.style.transform = getTransform(
+          zoomTargetInfo,
+          containerInfo
         )
+
+        const zoomedHd = active.zoomedHd
+        let isZoomedHdAnimated = false
+        // ensure zoomedHd still exists, not is closed or closing.
+        const checkIsInView = () =>
+          active.zoomedHd === zoomedHd && zoomedHd.style.transform !== ''
+
+        const animateToZoomedHdSize = () => {
+          if (isZoomedHdAnimated || !checkIsInView()) return
+          isZoomedHdAnimated = true
+          return new Promise(resolve => {
+            if (isSvg(zoomedHd)) return resolve(null)
+            if (zoomOptions.respectSrcsetImageSize && zoomedHd.currentSrc) {
+              // load new image to get image naturalWidth
+              const image = new Image(0, 0)
+              image.src = zoomedHd.currentSrc
+              const checkSize = setInterval(() => {
+                if (image.naturalWidth) {
+                  clearInterval(checkSize)
+                  image.src = ''
+                  resolve({
+                    naturalWidth: image.naturalWidth,
+                    naturalHeight: image.naturalHeight,
+                  })
+                }
+              }, 10)
+              image.onload = () => {
+                clearInterval(checkSize)
+                resolve({
+                  naturalWidth: image.naturalWidth,
+                  naturalHeight: image.naturalHeight,
+                })
+              }
+              image.onerror = () => {
+                clearInterval(checkSize)
+                resolve(null)
+              }
+              return
+            }
+            resolve({
+              naturalWidth: zoomedHd.naturalWidth,
+              naturalHeight: zoomedHd.naturalHeight,
+            })
+          }).then(dimensions => {
+            if (!checkIsInView()) return
+            const { naturalWidth = 0, naturalHeight = 0 } = dimensions || {}
+            active.zoomedHd.style.transform = active.zoomed.style.transform = getTransform(
+              {
+                ...zoomTargetInfo,
+                naturalWidth,
+                naturalHeight,
+              },
+              containerInfo
+            )
+          })
+        }
+
+        // image can get naturalWidth and currentSrc before is fully loaded.
+        // see  https://stackoverflow.com/questions/6575159/get-image-dimensions-with-javascript-before-image-has-fully-loaded
+        const checkImageInfo = setInterval(() => {
+          if (zoomedHd.currentSrc && zoomedHd.naturalWidth) {
+            clearInterval(checkImageInfo)
+            animateToZoomedHdSize()
+          }
+        }, 10)
+        zoomedHd.addEventListener('error', () => {
+          clearInterval(checkImageInfo)
+        })
+        const loadEventListener = zoomedHd.addEventListener('load', () => {
+          zoomedHd.removeEventListener('load', loadEventListener)
+          clearInterval(checkImageInfo)
+          animateToZoomedHdSize()
+          if (checkIsInView()) {
+            zoomedHd.style.visibility = 'visible'
+            zoomedHd.addEventListener('click', close)
+            if (active.zoomed) {
+              active.zoomed.style.visibility = 'hidden'
+            }
+          }
+        })
       } else {
         _animate()
       }
@@ -517,6 +623,7 @@ const mediumZoom = (selector, options = {}) => {
     scrollOffset: 40,
     container: null,
     template: null,
+    respectSrcsetImageSize: true,
     ...zoomOptions,
   }
 

@@ -35,6 +35,11 @@ export interface ZoomOptions {
    * @default null
    */
   template?: string | HTMLTemplateElement
+
+  /**
+   * when image is loaded from srcset, cannot directly get image's dimensions by naturalWidth. if you keep this option to true, it will request image twice (only when cache disabled) to get image's size. (default to true)
+   */
+  respectSrcImageSize?: boolean
 }
 
 export interface ZoomContainer {

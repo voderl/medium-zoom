@@ -347,7 +347,24 @@ const mediumZoom = (selector, options = {}) => {
         document.body.appendChild(active.template)
       }
 
-      document.body.appendChild(active.zoomed)
+      const isPictureSource =
+        active.original.parentNode &&
+        active.original.parentNode.tagName === 'PICTURE'
+      if (isPictureSource) {
+        const sourceWrapper = active.original.parentNode.cloneNode(true)
+        for (let i = 0, len = sourceWrapper.children.length; i < len; i++) {
+          const child = sourceWrapper.children[i]
+          if (child.tagName === 'IMG') {
+            sourceWrapper.removeChild(child)
+            break
+          }
+        }
+        sourceWrapper.appendChild(active.zoomed)
+        active.zoomedWrapper = sourceWrapper
+        document.body.appendChild(sourceWrapper)
+      } else {
+        document.body.appendChild(active.zoomed)
+      }
 
       window.requestAnimationFrame(() => {
         document.body.classList.add('medium-zoom--opened')
@@ -390,11 +407,25 @@ const mediumZoom = (selector, options = {}) => {
             _animate()
           }
         }, 10)
-      } else if (active.original.hasAttribute('srcset')) {
+      } else if (active.original.hasAttribute('srcset') || isPictureSource) {
         // If an image has a `srcset` attribuet, we don't know the dimensions of the
         // zoomed (HD) image (like when `data-zoom-src` is specified).
         // Therefore the approach is quite similar.
-        active.zoomedHd = active.zoomed.cloneNode()
+        if (isPictureSource) {
+          const zoomedHdWrapper = (active.zoomedHdWrapper = active.zoomedWrapper.cloneNode(
+            true
+          ))
+          for (let i = 0, len = zoomedHdWrapper.children.length; i < len; i++) {
+            const child = zoomedHdWrapper.children[i]
+            if (child.tagName === 'SOURCE') {
+              child.removeAttribute('sizes')
+            } else if (child.tagName === 'IMG') {
+              active.zoomedHd = child
+            }
+          }
+        } else {
+          active.zoomedHd = active.zoomed.cloneNode()
+        }
 
         // Resetting the sizes attribute tells the browser to load the
         // image best fitting the current viewport size, respecting the `srcset`.
@@ -410,7 +441,10 @@ const mediumZoom = (selector, options = {}) => {
         // directly append image to document
         active.zoomedHd.classList.add('medium-zoom-image--opened')
         active.zoomedHd.style.visibility = 'hidden'
-        document.body.appendChild(active.zoomedHd)
+
+        if (isPictureSource) {
+          document.body.appendChild(active.zoomedHdWrapper)
+        } else document.body.appendChild(active.zoomedHd)
 
         // Wait for the load event of the hd image. This will fire if the image
         // is already cached.
@@ -524,8 +558,14 @@ const mediumZoom = (selector, options = {}) => {
 
       const _handleCloseEnd = () => {
         active.original.classList.remove('medium-zoom-image--hidden')
-        document.body.removeChild(active.zoomed)
-        if (active.zoomedHd) {
+        if (active.zoomedWrapper) {
+          document.body.removeChild(active.zoomedWrapper)
+        } else if (active.zoomed) {
+          document.body.removeChild(active.zoomed)
+        }
+        if (active.zoomedHdWrapper) {
+          document.body.removeChild(active.zoomedHdWrapper)
+        } else if (active.zoomedHd) {
           document.body.removeChild(active.zoomedHd)
         }
         document.body.removeChild(overlay)
@@ -546,6 +586,8 @@ const mediumZoom = (selector, options = {}) => {
         active.original = null
         active.zoomed = null
         active.zoomedHd = null
+        active.zoomedWrapper = null
+        active.zoomedHdWrapper = null
         active.template = null
 
         resolve(zoom)
@@ -604,6 +646,8 @@ const mediumZoom = (selector, options = {}) => {
     zoomed: null,
     zoomedHd: null,
     template: null,
+    zoomedWrapper: null,
+    zoomedHdWrapper: null,
   }
 
   // If the selector is omitted, it's replaced by the options
